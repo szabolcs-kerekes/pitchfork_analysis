@@ -1,0 +1,263 @@
+---
+title: "Pitchfork scraper"
+author: "Szabolcs Kerekes"
+date: "19/04/2019"
+output: html_document
+---
+
+The following document details the process of getting the review informations from pitchfork.com.
+
+## Setup
+We start with setting up the environment via loading the required packages.
+
+```{r setup, results="hide", message=F, warning = F}
+library(rvest)
+library(data.table)
+library(jsonlite)
+library(httr)
+library(lubridate)
+library(dplyr)
+library(tidyverse)
+```
+
+## Defining functions
+Next we define the functions we use for scraping the website. The working of each functions is detailed in the comments.
+
+```{r functions}
+# This function gets the review link for each individual review.
+get_link_review <- function(url){
+  
+  my_page <- read_html(url)
+  
+  review_link<- 
+    my_page%>%
+    html_nodes('.review__link')%>%
+    html_attr('href')
+
+    return(review_link)
+}
+
+# This function gets the 'Best New Music' tags.
+get_bnm <- function(url){
+  
+  my_page <- read_html(url)
+  
+  artist<-
+    my_page%>%
+    html_nodes('.review__title-artist')%>%
+    html_text()
+  
+  album_name<-
+    my_page%>%
+    html_nodes('.review__title-album')%>%
+    html_text()
+  
+  date<-
+    my_page%>%
+    html_nodes('.pub-date')%>%
+    html_text()
+  
+  t <- data.frame('artist'= artist, 'album_name' = album_name, 'date' = date, stringsAsFactors = F)
+  return(t)
+}
+
+# This function gets the review details.
+get_review_data <- function(url){
+  
+  my_page <- read_html(url)
+  
+  artist<-
+    my_page%>%
+    html_node('.single-album-tombstone__artist-links')%>%
+    html_text()  
+  
+  album_name<-
+    my_page%>%
+    html_node('.single-album-tombstone__review-title')%>%
+    html_text()  
+  
+  date<-
+    my_page%>%
+    html_node('.pub-date')%>%
+    html_text() 
+  
+  p_score<-
+    my_page%>%
+    html_node('.score')%>%
+    html_text()
+  
+  genre<-
+    my_page%>%
+    html_node('.genre-list__link')%>%
+    html_text()
+  
+  release_year<-
+    my_page%>%
+    html_node('.single-album-tombstone__meta-year')%>%
+    html_text()   
+  
+  author_name<-
+    my_page%>%
+    html_node('.authors-detail__display-name')%>%
+    html_text()
+  
+  author_title<-
+    my_page%>%
+    html_node('.authors-detail__title')%>%
+    html_text()
+  
+  label_name<-
+    my_page%>%
+    html_node('.labels-list__item')%>%
+    html_text
+  
+  review_text<-
+    my_page%>%
+    html_nodes('p')%>%
+    html_text
+  
+  t <- data.frame('artist' = artist, 'album_name' = album_name, 'date' = date,  'p_score'= p_score, 'genre' = genre, 'release_year' = release_year, 'author_name' = author_name, 'author_title' = author_title, 'label_name' = label_name,
+ 'review_text' = review_text, stringsAsFactors = F)
+  
+  return(t)
+}
+```
+
+## Getting the individual lage links
+The following code chunk details the process of getting the individual links to the reviews. It also includes the creation of the links to the 'Best New Music' articles.
+
+```{r getting pages}
+# Here can be set the number of articles to be scraped, each page contains 12 articles
+page_count <- 2
+album_count <- page_count * 12
+page_number <- c(seq(1,page_count,1))
+
+# We create the links to the pages
+page_link <- rep("https://pitchfork.com/reviews/albums/?page=", length(page_number))
+all_page_links <- paste0(page_link, page_number)
+
+# We get the individual review links
+pitchfork_final_table <- NULL
+
+for(i in 1:page_count){
+  pitchfork_data_links <- get_link_review(all_page_links[i])
+  pitchfork_final_table <- c(pitchfork_final_table, pitchfork_data_links)
+}
+
+# We get rid of any duplicates
+full_link_list <- unique(pitchfork_final_table)
+
+# We create the exact links to be used later
+link_begin <- rep("https://pitchfork.com", length(full_link_list))
+indiv_links <- paste0(link_begin, full_link_list)
+
+# We do the same for the reviews tagged as 'Best New Music' 
+page_count_bnm <- 1
+page_number_bnm <- c(seq(1,page_count_bnm,1))
+page_link_bnm <- rep("https://pitchfork.com/reviews/best/albums/?page=", length(page_number_bnm))
+all_page_links_bnm <- paste0(page_link_bnm, page_number_bnm)
+```
+
+## Downloading the review details.
+As a next step we scrap the individual review pages and the 'Best New Music' information for each review.
+
+```{r getting scores}
+# The time measurement is only used for estimating the expected runtime 
+use_time <- FALSE
+if (use_time == TRUE){
+  start_time <- Sys.time()
+}
+
+pitchfork_data_aggreg_bnm <- NULL
+
+# We run the following loop with a sleep element to avoid IP blockage
+for(i in 1:page_count_bnm){
+  pitchfork_data_aggreg_prep_bnm <- get_bnm(all_page_links_bnm[i])
+  pitchfork_data_aggreg_bnm <- rbind(pitchfork_data_aggreg_bnm, pitchfork_data_aggreg_prep_bnm)
+  if (i %% 5 == 0){
+    Sys.sleep(1)
+  }
+}
+
+pitchfork_score_post <- NULL
+pitchfork_score_prep <- NULL
+
+# We run the following loop with a sleep element to avoid IP blockage
+for(i in 1:album_count){
+  pitchfork_score_prep <- tryCatch(get_review_data(indiv_links[i]), error = function(e) c(0,0,0,0,0,0))
+  pitchfork_score_post <- rbind(pitchfork_score_post, pitchfork_score_prep)
+    if (i %% 5 == 0){
+    Sys.sleep(1)
+    }
+}
+
+if (use_time == TRUE){
+  end_time <- Sys.time()
+run_time_scores <- end_time - start_time
+paste0("Scoring loop run for: ", run_time_scores)
+}
+```
+
+We need to merge all of the reviews into one entry as now they are still in separate line per entries.
+
+```{r aggregator}
+# We create IDs for the selections
+pitchfork_score_post <- pitchfork_score_post %>% mutate(id = paste0(paste0(artist, album_name),date))
+unique_albums <- unique(pitchfork_score_post$id)
+
+temp_df <- data.frame()
+
+# We merge the review text data into one and add it back to the original file
+for (i in unique_albums){
+  reviews <- pitchfork_score_post %>% select(id, review_text) %>% filter(id == i)
+  review_total <- c()
+  for (r in reviews$review_text){
+    review_total <- paste(review_total, r)
+  }
+  reviews <- pitchfork_score_post %>% filter(id == i)
+  reviews <- head(reviews, 1)
+  reviews$review_text <- review_total
+  temp_df <- rbind(temp_df, reviews)
+}
+
+pitchfork_score_post <- temp_df %>% select(-id)
+```
+
+## Initial data cleaning
+Here we do some cleaning of the data, including merging the original and 'Best New Music' data, as well as adjusting variable types and column names.
+
+```{r data adjusted, warning=FALSE}
+# We add the links to the review data
+results_matrix <- NULL
+results_matrix <- cbind(pitchfork_score_post, indiv_links)
+colnames(results_matrix) <- c("artist", "album", "date", "score", "genre", "release_year", "author_name", "author_title", "label_name", "review_text", "link")
+results_matrix_dt <- data.table(results_matrix)
+
+# We create dummies for the 'Best New Music' albums
+bnm_stats <- data.table(pitchfork_data_aggreg_bnm)
+bnm_stats[, bnm := TRUE,]
+bnm_stats[, id := paste0(artist, album_name, date), ]
+
+# We merge the two datasets
+results_matrix_dt[, id := paste0(artist, album, date), ]
+results_matrix_bnm <- left_join(results_matrix_dt, bnm_stats, by = 'id')
+
+# We adjust and rename the variables in the merged data
+results_matrix_bnm <- data.table(results_matrix_bnm)
+results_matrix_bnm[, c("artist.y", "album_name", "date.y") := NULL, ]
+colnames(results_matrix_bnm) <- c("artist", "album", "review_date", "score", "genre", "release_year", "author_name", "author_title", "label_name", "review_text", "link", "id", "bnm")
+
+# We do some further adjustments to the variables
+results_matrix_bnm[, review_date := mdy(review_date), ]
+results_matrix_bnm$score <- as.numeric(results_matrix_bnm$score)
+results_matrix_bnm$genre <- as.factor(results_matrix_bnm$genre)
+results_matrix_bnm$release_year <- as.numeric(sub("• ","", results_matrix_bnm$release_year))
+
+```
+
+## Saving the data
+Finally we save the data into a csv type file.
+
+```{r saving}
+write.csv(results_matrix_bnm, 'pitchfork_final.csv',row.names = FALSE)
+```
