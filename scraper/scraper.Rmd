@@ -259,5 +259,5 @@ results_matrix_bnm$release_year <- as.numeric(sub("• ","", results_matrix_bnm$
 Finally we save the data into a csv type file.
 
 ```{r saving}
-write.csv(results_matrix_bnm, 'pitchfork_final.csv',row.names = FALSE)
+write.csv(results_matrix_bnm, 'data/pitchfork_final.csv',row.names = FALSE)
 ```
