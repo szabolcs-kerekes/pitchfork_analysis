@@ -1,9 +1,11 @@
 ---
 title: "scraper"
 author: "Szabolcs Kerekes"
-date: "11/05/2019"
+date: "16/05/2019"
 output: html_document
 ---
+
+## Setup
 
 ```{r setup, results="hide", message=F, warning = F}
 library(tidyverse)
@@ -14,28 +16,24 @@ library(lubridate)
 library(skimr)
 library(purrr)
 library(data.table)
-library(logger)
 library(caret)
 ```
 
-## R Markdown
+We start with importing the packages used in the analysis.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+## Data exploration
 
 ```{r data_import, warning=FALSE, message=FALSE}
-data <- read.csv('data/pitchfork_final.csv', stringsAsFactors = FALSE)
+data <- read.csv('~/Documents/pitchfork_analysis/data/pitchfork_final.csv', stringsAsFactors = FALSE)
 str(data)
 head(data)
 skim(data)
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
+First we import the data and take a look at how it looks. 
 
 ```{r missing_values, warning=FALSE, message=FALSE}
+# We check the missing values by features
 data %>% filter(is.na(artist) == TRUE)
 
 data <- data %>% filter(is.na(release_year) == FALSE)
@@ -43,6 +41,8 @@ data <- data %>% filter(is.na(release_year) == FALSE)
 data <- data %>% mutate(review_date = ymd(review_date))
 max_date <- data %>% select(review_date) %>% drop_na() %>% head(1)
 max_date <- max_date$review_date
+
+# We take care of missing values and do some transformations on the features
 data <- data %>% replace_na(list(review_date = max_date + 1, 
                                  bnm = FALSE,
                                  author_title = 'Other',
@@ -56,14 +56,17 @@ data <- data %>% mutate(artist = as.factor(artist),
                 author_title = as.factor(author_title),
                 label_name = as.factor(label_name))
 
+# We filter our data on release year
 data <- data %>% filter(release_year >= 2016)
 ```
 
-TBA
+Next we take care of missing values and limit the release year to 2016 or later.
 
 ```{r parsing_text, warning=FALSE, message=FALSE}
+# We check for unique characters
 unique(unlist(map(data$review_text, function(x) unique(unlist(strsplit(tolower(x), split = ""))))))
 
+# We create a function to turn all review texts into lower case texts without special characters
 temp <- map(data$review_text, function(x){ 
   x <- str_replace_all(x, 'Best new music', '')
   x <- tolower(x)
@@ -74,9 +77,10 @@ temp <- map(data$review_text, function(x){
 data$review_text <- unlist(temp)
 ```
 
-TBA
+Then we modify the review texts to have a simpler format.
 
 ```{r custom_stop_words, warning=FALSE, message=FALSE}
+# We create our own custom stop word dictionary with including genre names, artist names and other words
 names <- gsub("([a-z])([A-Z])", "\\1 \\2", unique(data$artist))
 names <- str_split(names, ' ')
 names <- map(names, function(x) tolower(x))
@@ -96,26 +100,35 @@ custom_stop_words <- bind_rows(data_frame(word = c("album", "music", "songs", "b
 
 ```
 
-TBA
+We create a custom stop word divtionary with the artist names and certain words that we think should not be included for the sentiment and the word frequency analyses.
+
+## Sentiment analysis
 
 ```{r sentiment_scores, warning=FALSE, message=FALSE}
 sent_afinn <- get_sentiments('afinn')
 
+# We create a function for calculating the sentiment scores for each review
 afinn_scores <- map(data$review_text, function(x){
   text <- strsplit(x, ' ')
-  
   text <- data_frame('word' = unlist(text))
-  
   text <- text %>% 
     filter(word != '') %>%
     anti_join(stop_words) %>% 
     inner_join(sent_afinn) %>% 
     summarise(afinn_score = mean(score) / 5)
-  
   return(text$afinn_score)
 })
 
 data$afinn_score <- unlist(afinn_scores)
+
+ggplot(data = data, aes(x = score, y = afinn_score)) +
+  geom_point() +
+  geom_smooth(method = 'lm') + 
+  theme_bw() +
+  labs(x = 'Review score', y = 'Sentiment score', 
+       title = 'Review score vs. sentiment score', subtitle = 'All periods')
+
+ggsave('~/Documents/pitchfork_analysis/pictures/review_vs_sentiment.png')
 
 ggplot(data = data, aes(x = score, y = afinn_score)) +
   geom_point() +
@@ -125,7 +138,7 @@ ggplot(data = data, aes(x = score, y = afinn_score)) +
   labs(x = 'Review score', y = 'Sentiment score', 
        title = 'Review score vs. sentiment score', subtitle = '2016 to 2019, yearly breakdown')
 
-ggsave('review_vs_sentiment1619.png')
+ggsave('~/Documents/pitchfork_analysis/pictures/review_vs_sentiment1619.png')
 
 ggplot(data = data, aes(x = score, y = afinn_score)) +
   geom_point(size = 0.1) +
@@ -135,28 +148,28 @@ ggplot(data = data, aes(x = score, y = afinn_score)) +
   labs(x = 'Review score', y = 'Sentiment score', 
                                   title = 'Review score vs. sentiment score', subtitle = 'By year and genre, 2016 to 2019, yearly breakdown')
 
-ggsave('review_vs_sentiment1619_detailed.png', width = 9, height = 30)
+ggsave('~/Documents/pitchfork_analysis/pictures/review_vs_sentiment1619_detailed.png', width = 9, height = 30)
 ```
 
-TBA
+We create sentiment scores with the 'afinn' sentiment dictionary, and visualise the data.
 
 ```{r ols_modelling, warning=FALSE, message=FALSE}
+# We set the seed for reproducibility
+set.seed(42)
+
+# We separate the data into train and test
 train_index <- createDataPartition(iris$Species, p = .7, 
                                    list = FALSE, 
                                    times = 1)
-
 data_train <- data[train_index,]
-
 data_test <- data[-train_index,]
 
-nrow(data_test) - sum(data_test$author_name %in% data_train$author_name)
-
+# We don't use the below features in the model because some values are not in both sets
 unique(data_test$author_name)[!(unique(data_test$author_name) %in% unique(data_train$author_name))]
-
 unique(data_test$author_title)[!(unique(data_test$author_title) %in% unique(data_train$author_title))]
 
+# We create an OLS model with caret
 vars_lev <- c('genre', 'afinn_score', 'bnm')
-
 lev1model <- paste0("score ~ ",paste(vars_lev,collapse = " + "))
 
 ols_modeller <- function(x, data_train) {
@@ -173,11 +186,34 @@ ols_modeller <- function(x, data_train) {
 }
 
 train_control <- trainControl(method = "cv", number = 10, verboseIter = F)
-
 model <- ols_modeller(lev1model, data_train)
+summary(model)
 
+# We do the predictions on the test set
 data_predicted <- data_test %>% 
   mutate(predicted_score = predict(model, newdata = data_test))
+
+# We measure errors on both the train and test set
+rmse <- function(x, y){
+  (sum((x - y) ^ 2) / length(x)) ^ 0.5
+}
+
+mae <- function(x, y){
+  sum(abs(x - y)) / length(x)
+}
+
+rmse_train <- rmse(data_train$score, predict(model, newdata = data_train))
+mae_train <- mae(data_train$score, predict(model, newdata = data_train))
+rmse_test <- rmse(data_predicted$score, data_predicted$predicted_score)
+mae_test <- mae(data_predicted$score, data_predicted$predicted_score)
+
+print(paste0(
+        paste0("RMSE on the train set was ", round(rmse_train, 2)),
+        paste0(" RMSE on the test set was ", round(rmse_test, 2))))
+
+print(paste0(
+        paste0("MAE on the train set was ", round(mae_train, 2)),
+        paste0(" MAE on the test set was ", round(mae_test, 2))))
 
 ggplot(data = data_predicted, aes(x = score, y = predicted_score)) +
   geom_point() +
@@ -188,7 +224,7 @@ ggplot(data = data_predicted, aes(x = score, y = predicted_score)) +
   labs(x = 'Actual score', y = 'Predicted score', 
        title = 'Actual score vs. predicted score', subtitle = 'on the test set')
 
-ggsave('test_results.png')
+ggsave('~/Documents/pitchfork_analysis/pictures/test_results.png')
 
 ggplot(data = data_predicted, aes(x = score, y = predicted_score)) +
   geom_point(size = 0.1) +
@@ -200,12 +236,15 @@ ggplot(data = data_predicted, aes(x = score, y = predicted_score)) +
   labs(x = 'Actual score', y = 'Predicted score', 
        title = 'Actual score vs. predicted score', subtitle = 'on the test set, by genre')
 
-ggsave('test_results_detailed.png')
+ggsave('~/Documents/pitchfork_analysis/pictures/test_results_detailed.png')
 ```
 
-TBA
+Then we do some OLS modelling to check the relationship. We use cross-validation as well as a train - test set split to create a more robust model.
+
+## Word frequency analysis
 
 ```{r word_frequency_1, warning=FALSE, message=FALSE}
+# We separate the data into multiple groups based on the review score
 summary(data$score)
 
 q1 <- 6.8
@@ -213,30 +252,21 @@ q2 <- 7.3
 q3 <- 7.7
 
 q1_data <- data %>% filter(score < 6.8)
-
 q2_data <- data %>% filter(score >= 6.8 & score < 7.7)
-
 q3_data <- data %>% filter(score > 7.7)
 
+# We do the word counting with a custom function
 top_worder <- function(data_input){
-  
   text_list <- list()
-  log_info('List created')
   
   for (i in 1:nrow(data_input)){
     data <- data_input %>% slice(i) %>% select(artist, review_text)
-    #log_info('Data slices')
-
     text <- strsplit(data$review_text, ' ')
-    #log_info('Text split done')
     text <- data_frame(word = unlist(text))
-    #log_info('Added word variable')
     text <- text %>% 
       filter(word != '')
-    #log_info('Filtered for empty')
     text <- text %>% 
       anti_join(custom_stop_words)
-    #log_info('Anti-join done')
     total_rows <- nrow(text)
     text <- text %>% 
       group_by(word) %>% 
@@ -244,14 +274,11 @@ top_worder <- function(data_input){
       summarize(count = n, total_count = total_rows) %>% 
       arrange(-count) %>%
       head(20)
-    
     text_list[[i]] <- text 
   }
   
   trial <- rbindlist(text_list)
-  
   all_words <- sum(trial$total_count) / length(unique(trial$total_count))
-  
   top_words <- trial %>% 
     group_by(word) %>% 
     summarise(total = sum(count), all_words = all_words, share = total/all_words) %>% 
@@ -261,16 +288,13 @@ top_worder <- function(data_input){
 }
 
 q1_data_f <- top_worder(q1_data) %>% mutate(segment = 'bottom_25') %>% head(10)
-
 q2_data_f <- top_worder(q2_data) %>% mutate(segment = 'mid_range') %>% head(10)
-
 q3_data_f <- top_worder(q3_data) %>% mutate(segment = 'top_25') %>% head(10)
-
 all_qs <- rbindlist(list(q1_data_f, q2_data_f, q3_data_f))
 
 ggplot(all_qs, aes(x = reorder(word, share), round(share * 100, 2), fill = segment)) +
   geom_col() +
-  facet_wrap(~segment, ncol = 3, scales = 'free') +
+  facet_wrap(~segment, ncol = 3, scales = "free_y") +
   coord_flip() +
   theme_bw() +
   labs(x = 'Words', y = 'Share of words (%)', 
@@ -278,12 +302,13 @@ ggplot(all_qs, aes(x = reorder(word, share), round(share * 100, 2), fill = segme
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   guides(fill = FALSE)
 
-ggsave('word_freq_q123.png')
+ggsave('~/Documents/pitchfork_analysis/pictures/word_freq_q123.png')
 ```
 
-TBA
+We separate the data into three sub groups based on the review scores and check the top 10 words for each.
 
 ```{r word_frequency_2, warning=FALSE, message=FALSE}
+# We do the same process of word counting, but now based on the genre
 genre_list <- list()
 i = 1
 for (g in unique(q1_data$genre)){
@@ -297,7 +322,7 @@ all_genres_freq <- rbindlist(genre_list)
 
 ggplot(all_genres_freq, aes(x = reorder(word, share), round(share * 100, 2), fill = segment)) +
   geom_col(show.legend = FALSE) +
-  facet_wrap(~segment, ncol = 3, scales = 'free') +
+  facet_wrap(~segment, ncol = 3, scales = "free_y") +
   coord_flip() +
   theme_bw() +
   labs(x = 'Words', y = 'Share of words (%)', 
@@ -305,12 +330,13 @@ ggplot(all_genres_freq, aes(x = reorder(word, share), round(share * 100, 2), fil
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   guides(fill = FALSE)
 
-ggsave('word_freq_genre.png',  width = 9, height = 12)
+ggsave('~/Documents/pitchfork_analysis/pictures/word_freq_genre.png',  width = 9, height = 12)
 ```
 
-TBA
+As a next step we look at the differences across genres.
 
 ```{r word_frequency_3, warning=FALSE, message=FALSE}
+# We merge the two earlier approaches into one via the following function
 genre_freqer <- function(data){
   genre_list <- list()
   i = 1
@@ -334,7 +360,7 @@ all_qs_genre_f <- rbindlist(list(q1_data_genre_f, q2_data_genre_f, q3_data_genre
 
 ggplot(all_qs_genre_f, aes(x = reorder(word, share), round(share * 100, 2), fill = segment)) +
   geom_col(show.legend = FALSE) +
-  facet_wrap(~segment + quartile, ncol = 3, scales = 'free') +
+  facet_wrap(~segment + quartile, ncol = 3, scales = "free_y") +
   coord_flip() +
   theme_bw() +
   labs(x = 'Words', y = 'Share of words (%)', 
@@ -342,33 +368,26 @@ ggplot(all_qs_genre_f, aes(x = reorder(word, share), round(share * 100, 2), fill
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   guides(fill = FALSE)
 
-ggsave('word_freq_genre_segment.png', width = 9, height = 30)
+ggsave('~/Documents/pitchfork_analysis/pictures/word_freq_genre_segment.png', width = 9, height = 30)
 ```
 
-TBA
+Finally we merge the two groupings into one.
 
 ```{r inverse_frequency, warning=FALSE, message=FALSE}
+# We create a custom function for the inverse frequency calculation
 tf_idfer <- function(data_input){
   text_list <- list()
-  
+
   for (i in 1:nrow(data_input)){
     work_data <- data_input %>% slice(i) %>% select(artist, album, review_text)
-    
     artist_to_use <- paste(work_data$artist, work_data$album, sep = '_')
-    #log_info('Data slices')
-    
     text <- strsplit(work_data$review_text, ' ')
-    #log_info('Text split done')
     text <- data_frame(word = unlist(text))
-    #log_info('Added word variable')
     text <- text %>% 
       filter(word != '')
-    #log_info('Filtered for empty')
     text <- text %>% 
       anti_join(custom_stop_words)
-    #log_info('Anti-join done')
     text <- text %>% mutate(artist = artist_to_use)
-    
     text_list[[i]] <- text 
   }
   
@@ -381,19 +400,15 @@ tf_idfer <- function(data_input){
   return(text_list)
 }
 
-tf_idfer(data)
-
 q1_data_idf <- tf_idfer(q1_data) %>% mutate(segment = 'bottom_25') %>% head(10)
-
 q2_data_idf <- tf_idfer(q2_data) %>% mutate(segment = 'mid_range') %>% head(10)
-
 q3_data_idf <- tf_idfer(q3_data) %>% mutate(segment = 'top_25') %>% head(10)
 
 all_qs_idf <- rbindlist(list(q1_data_idf, q2_data_idf, q3_data_idf))
 
 ggplot(all_qs_idf, aes(x = reorder(word, mean_tf_idf), mean_tf_idf, fill = segment)) +
   geom_col() +
-  facet_wrap(~segment, ncol = 3, scales = 'free') +
+  facet_wrap(~segment, ncol = 3, scales = "free_y") +
   coord_flip() +
   theme_bw() +
   labs(x = 'Words', y = 'Inverse frequency', 
@@ -401,7 +416,7 @@ ggplot(all_qs_idf, aes(x = reorder(word, mean_tf_idf), mean_tf_idf, fill = segme
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   guides(fill = FALSE)
 
-ggsave('inv_word_freq_segment.png')
+ggsave('~/Documents/pitchfork_analysis/pictures/inv_word_freq_segment.png')
 ```
 
-TBA
+At the end we also check the inverse word frequency for the three sub-groups.
