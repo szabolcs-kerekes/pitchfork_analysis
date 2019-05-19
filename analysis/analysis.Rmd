@@ -100,7 +100,7 @@ custom_stop_words <- bind_rows(data_frame(word = c("album", "music", "songs", "b
 
 ```
 
-We create a custom stop word divtionary with the artist names and certain words that we think should not be included for the sentiment and the word frequency analyses.
+We create a custom stop word dictionary with the artist names and certain words that we think should not be included for the sentiment and the word frequency analyses.
 
 ## Sentiment analysis
 

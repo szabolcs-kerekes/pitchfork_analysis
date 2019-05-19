@@ -1,7 +1,7 @@
 # Analysis of the sentiment and scoring of Pitchfork articles
 This analysis aims to analyse the relationship between the review scores assigned to album reviews on the pitchfork.com website to the sentiment of the reviews written as well as to find clues on "what makes music good" based on the words used in the actual reviews.
 
-The source data was generated via the **['Scraper'](scraper/scraper.Rmd)** file, while the actual analysis script is available here **['Analysis'](analysis/analysis.R)**.
+The source data was generated via the **['Scraper'](scraper/scraper.Rmd)** file, while the actual analysis script is available here: **['Analysis'](analysis/analysis.Rmd)**.
 
 ## Results of the analysis
 In the following we will outline the results for both the review score - sentiment score relationship, as well as the results of the word frequency analysis. We argue that the sentiment analysis based on the afinn sentiment dictionary does not show a clear relationship with the review scores in our data, while by the quality of music we find that there are differences, mostly across genres and which words are frequently used for low rated and high rated reviews by genre. At the end of the document we also provide those areas where we believe further analysis could be done in order to enhance the results.
@@ -82,16 +82,16 @@ First we look at the word frequency in the total dataset (separated by review sc
 
 Next we go one step further and do the same analysis also divided by genres. Here we can find more prominent results, such as: 
 
-- "EDM" and "vocals" being less favoured for electronic music, but "techno" is better regarded
-- in the case of experimental music "solo" seems to be good, but "acoustic" seems to be weak
-- for folk & country "debut" albums seem to perform better and "vocals" is on the weak side (although here it is likely that due to the low element count in the groups the results are in practice not very meaningful)
-- for global music the word lists are very different, most likely due to the low element counts in the groups
-- in the case of jazz music doing "blues" seems to be a better choice than having a "saxophonist" (or more likely a good saxophonist is needed)
-- for metal music "riffs" are frequent in average and above average albums, while the below average group is probably biased due to the low element count (or another explanation can be that doing some kind of magical metal indicated by the word "sorceress" is not much favoured)
-- we don't look at other music due to its inconsistency as a genre
-- for pop & rnb "guitar" and "funk" are frequent in the average or better results while "solo" seems to be more frequented in lower rated reviews
-- for rap "verse" is more on the downside, while for some reason "christmas" is frequent in above average albums, however it is not easy to find a reasoning for this phenomenon
-- for rock "chorus" can be problematic, while "accoustic" is well regarded
+- "EDM" and "vocals" being less favoured for electronic music, but "techno" is better regarded;
+- in the case of experimental music "solo" seems to be good, but "acoustic" seems to be weak;
+- for folk & country "debut" albums seem to perform better and "vocals" is on the weak side (although here it is likely that due to the low element count in the groups the results are in practice not very meaningful);
+- for global music the word lists are very different, most likely due to the low element counts in the groups;
+- in the case of jazz music doing "blues" seems to be a better choice than having a "saxophonist" (or more likely a good saxophonist is needed);
+- for metal music "riffs" are frequent in average and above average albums, while the below average group is probably biased due to the low element count (or another explanation can be that doing some kind of magical metal indicated by the word "sorceress" is not much favoured);
+- we don't look at other music due to its inconsistency as a genre;
+- for pop & rnb "guitar" and "funk" are frequent in the average or better results while "solo" seems to be more frequented in lower rated reviews;
+- for rap "verse" is more on the downside, while for some reason "christmas" is frequent in above average albums, however it is not easy to find a reasoning for this phenomenon;
+- for rock "chorus" can be problematic, while "accoustic" is well regarded.
 
 Based on the above we can see that depending on the genre different words are frequently used, so it could be worthy looking at sub groups instead of the whole dataset.
 
